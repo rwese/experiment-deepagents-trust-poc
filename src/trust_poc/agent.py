@@ -13,7 +13,9 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import Command
+from langsmith import tracing_context
 from pydantic import Field
 
 from trust_poc.judge import FakeJudge, Judge
@@ -91,11 +93,12 @@ class SessionAgent:
         inputs = {"messages": [HumanMessage(content=task)]}
         if self.guarded and not self.state(session_id):
             inputs.update(trusted=True, critical_categories=set(), security_events=[])
-        return await self.graph.ainvoke(
-            inputs,
-            config={"configurable": {"thread_id": session_id}, "recursion_limit": 30},
-            context=SecurityContext(task=task, session_id=session_id),
-        )
+        with tracing_context(enabled=False):
+            return await self.graph.ainvoke(
+                inputs,
+                config={"configurable": {"thread_id": session_id}, "recursion_limit": 30},
+                context=SecurityContext(task=task, session_id=session_id),
+            )
 
     def state(self, session_id: str) -> dict[str, Any]:
         return self.graph.get_state({"configurable": {"thread_id": session_id}}).values
@@ -125,7 +128,11 @@ def assemble_agent(
         ],
         state_schema=state_schema or SecurityState,
         context_schema=SecurityContext,
-        checkpointer=InMemorySaver(),
+        checkpointer=InMemorySaver(
+            serde=JsonPlusSerializer(
+                allowed_msgpack_modules=[("trust_poc.schemas", "SecurityEvent")]
+            )
+        ),
         system_prompt="Use only the supplied tools. Request one tool call at a time.",
     )
     return SessionAgent(graph, domain, guarded=True)

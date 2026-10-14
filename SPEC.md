@@ -1,6 +1,6 @@
 # Deep Agents session trust middleware PoC
 
-Status: implementation specification; application code has not been built.
+Status: PoC implemented; all 20 deterministic acceptance scenarios verified. Live-model classification remains unverified without provider configuration.
 
 ## Goal
 
