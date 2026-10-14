@@ -190,3 +190,11 @@ def test_request_policy_denial_cannot_be_erased_by_judge():
     allowed = request_policy("read_public_document", {}, True)
     judge_denied = RequestVerdict(decision="deny", reason_code="deny", explanation="")
     assert combine_request(allowed, judge_denied).decision == "deny"
+
+
+def test_serialized_json_nested_inside_tool_message_envelope_is_decoded():
+    envelope = {"content": '{"contact":"synthetic\\u0040example.test"}'}
+    finding = response_policy(envelope)
+    assert finding.critical and finding.categories == ("pii",)
+    double_encoded = {"content": json.dumps(json.dumps({"contact": "synthetic@example.test"}))}
+    assert response_policy(double_encoded).critical

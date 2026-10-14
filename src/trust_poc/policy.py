@@ -115,6 +115,13 @@ def _walk(value: Any, strings: list[str], depth: int = 0, active: set[int] | Non
         active = set()
     if type(value) is str:
         strings.append(value)
+        # ToolMessage envelopes can contain serialized JSON in any string field.
+        # Decode each such field with the same depth bound as native JSON.
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return
+        _walk(decoded, strings, depth + 1, active)
     elif value is None or type(value) in (bool, int):
         return
     elif type(value) is float:
@@ -150,15 +157,6 @@ def response_policy(
         serialized = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
         if len(serialized.encode("utf-8")) > MAX_RESPONSE_BYTES:
             raise InspectionFailure("oversized")
-        # ToolNode serializes dictionaries into text. Inspect JSON keys/values after
-        # decoding, in addition to scanning the exact returned string.
-        if type(payload) is str:
-            try:
-                nested = json.loads(payload)
-            except (ValueError, RecursionError):
-                nested = None
-            if nested is not None:
-                _walk(nested, strings)
     except (InspectionFailure, ValueError, TypeError, UnicodeError, RecursionError):
         return ResponseFinding(
             release="withhold",
