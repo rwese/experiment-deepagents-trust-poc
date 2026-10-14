@@ -1,0 +1,8 @@
+{
+  "public": {"notice":"Sample service desk announcement. No customer information."},
+  "pii": {"name":"Synthetic Avery Example","email":"avery@example.test","phone":"+1-202-555-0147"},
+  "credential": {"api_key":"SYNTHETIC_API_KEY_DEMO_ONLY_123456","password":"SYNTHETIC_PASSWORD_demo_only"},
+  "financial": {"name":"Synthetic River Example","account_balance":"EUR 1234.56"},
+  "medical": {"name":"Synthetic Ellis Example","diagnosis":"synthetic seasonal allergy"},
+  "ambiguous": {"narrative":"The customer who lives above the sample town bakery needs insulin delivered each Thursday."}
+}

@@ -1,0 +1,31 @@
+[project]
+name = "trust-poc"
+version = "0.1.0"
+description = "Synthetic Deep Agents session sensitivity middleware demonstration"
+requires-python = ">=3.12"
+dependencies = [
+  "deepagents==0.7.25",
+  "langchain==1.4.5",
+  "langchain-core==1.6.10",
+  "langchain-openai==1.7.2",
+  "langgraph==1.2.15",
+  "pydantic==2.14.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "pytest-asyncio==1.4.0", "ruff==0.17.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+[tool.trust-poc.commands]
+check = "uv run ruff check . && uv run ruff format --check . && uv run pytest"
+harness = "uv run python -m trust_poc.agent"
