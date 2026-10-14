@@ -2,6 +2,7 @@
 
 # Inspection inputs are immutable contracts; raw provider verdicts are validated here.
 import asyncio
+import math
 from collections import deque
 from collections.abc import Mapping
 from copy import deepcopy
@@ -92,8 +93,8 @@ class JudgeRunner:
     """Bound each separate judge invocation and convert failures to controlled codes."""
 
     def __init__(self, judge: Judge, timeout_seconds: float = 5.0) -> None:
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be finite and positive")
         self.judge = judge
         self.timeout_seconds = timeout_seconds
 

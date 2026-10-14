@@ -121,3 +121,28 @@ async def test_timeout_cancels_judge_and_error_is_sanitized():
     ).response(response_input())
     assert result.failed and result.reason_code == "judge_error"
     assert "synthetic@example.test" not in repr(result)
+
+
+async def test_unvalidated_model_instances_are_revalidated():
+    from trust_poc.schemas import RequestVerdict
+
+    class InvalidInstanceJudge(FakeJudge):
+        async def inspect_request(self, inputs):
+            return RequestVerdict.model_construct(
+                decision="invalid", reason_code="x", explanation=""
+            )
+
+        async def inspect_response(self, inputs):
+            return ResponseVerdict.model_construct(
+                critical=False, categories=[], release="invalid", reason_code="x", explanation=""
+            )
+
+    runner = JudgeRunner(InvalidInstanceJudge())
+    assert (await runner.request(request_input())).reason_code == "judge_invalid"
+    assert (await runner.response(response_input())).reason_code == "judge_invalid"
+
+
+@pytest.mark.parametrize("timeout", [float("inf"), float("nan"), 0, -1])
+def test_timeout_must_be_finite_and_positive(timeout):
+    with pytest.raises(ValueError):
+        JudgeRunner(FakeJudge(), timeout_seconds=timeout)

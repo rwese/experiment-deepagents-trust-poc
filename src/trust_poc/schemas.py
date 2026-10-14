@@ -20,7 +20,9 @@ def union_categories(previous: set[Category], incoming: set[Category]) -> set[Ca
 
 
 class FrozenContract(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, strict=True, revalidate_instances="always"
+    )
 
 
 class RequestFinding(FrozenContract):
