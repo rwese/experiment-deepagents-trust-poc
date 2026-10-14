@@ -23,9 +23,23 @@ and graph expose exactly `read_public_document`, `read_customer_record`, and
 `send_external_message`. No bookkeeping tools remain. Synthetic handlers return JSON dictionaries;
 LangGraph's tool node wraps them as JSON-string `ToolMessage` results with the original call ID.
 
-This first milestone establishes the executable harness. Enforcement, classification, and the
-blocked-send demonstration are added in later milestones; the harness command currently proves
-public reading and the restricted tool set. Live model evaluation remains separate from offline tests.
+The assembled application always uses request and response gates; without an explicit judge it
+uses a permissive fake judge for offline testing. Explicit fake verdicts demonstrate semantic
+classification. In-memory checkpoints preserve taint across invocations of the same thread.
+Live model evaluation remains separate from offline tests.
+
+The model scheduling guard rejects multiple calls before scheduling any handler, returns a matching
+denial for every call, and asks for a sequential retry. The tool adapter accepts only exact
+content-format `StructuredTool` implementations, validates raw results before framework
+stringification, and rejects unsupported tool implementations during assembly. Supported handler
+Commands are local message-only updates with exactly one matching `ToolMessage`; all other state
+updates and routing shapes fail closed. Supported safe message content, artifacts and metadata
+are inspected together and preserved.
+
+Audit events include decisions, categories, controlled reason codes, and stable SHA-256 references
+for session and call IDs. They exclude tool arguments, payloads, model explanations and raw
+identifiers. Tool messages retain their original call IDs. The local outbox independently records
+actual synthetic send execution.
 
 Deterministic inspection accepts text and JSON and bounds the complete serialized response to
 16 KiB of UTF-8 with a maximum JSON depth of 32. It scans every nested string and JSON key,

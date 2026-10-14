@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
+from functools import wraps
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -9,11 +10,48 @@ from deepagents.graph import DeepAgentState
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import StructuredTool
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
 from pydantic import Field
 
+from trust_poc.judge import FakeJudge, Judge
+from trust_poc.middleware import SecurityContext, TrustMiddleware
+from trust_poc.policy import InspectionFailure, response_policy
+from trust_poc.schemas import SecurityState
 from trust_poc.tools import DomainTools, build_tools
+
+
+def _validate_raw_result(value: Any) -> Any:
+    """Reject opaque results before BaseTool can stringify them into apparently safe text."""
+    if not isinstance(value, (ToolMessage, Command)) and not response_policy(value).inspectable:
+        raise InspectionFailure("response_inspection_failed")
+    return value
+
+
+def _guard_raw_tool(entry: Any) -> StructuredTool:
+    """Wrap the exact supported tool implementation without changing its argument contract."""
+    if type(entry) is not StructuredTool or entry.response_format != "content":
+        raise ValueError("only content-format StructuredTool instances are supported")
+    updates = {}
+    if entry.func is not None:
+        original = entry.func
+
+        @wraps(original)
+        def sync_guard(*args: Any, **kwargs: Any) -> Any:
+            return _validate_raw_result(original(*args, **kwargs))
+
+        updates["func"] = sync_guard
+    if entry.coroutine is not None:
+        original_async = entry.coroutine
+
+        @wraps(original_async)
+        async def async_guard(*args: Any, **kwargs: Any) -> Any:
+            return _validate_raw_result(await original_async(*args, **kwargs))
+
+        updates["coroutine"] = async_guard
+    return entry.model_copy(update=updates)
 
 
 class DisabledBuiltin(AgentMiddleware):
@@ -42,16 +80,21 @@ class ScriptedChatModel(FakeMessagesListChatModel):
 class SessionAgent:
     """Own a graph and in-memory checkpoint store; session IDs select its state."""
 
-    def __init__(self, graph: Any, domain_tools: DomainTools) -> None:
+    def __init__(self, graph: Any, domain_tools: DomainTools, guarded: bool = False) -> None:
         self.graph = graph
         self.domain_tools = domain_tools
+        self.guarded = guarded
 
     async def invoke(self, task: str, session_id: str) -> dict[str, Any]:
         if not session_id:
             raise ValueError("session_id must be nonempty")
+        inputs = {"messages": [HumanMessage(content=task)]}
+        if self.guarded and not self.state(session_id):
+            inputs.update(trusted=True, critical_categories=set(), security_events=[])
         return await self.graph.ainvoke(
-            {"messages": [HumanMessage(content=task)]},
+            inputs,
             config={"configurable": {"thread_id": session_id}, "recursion_limit": 30},
+            context=SecurityContext(task=task, session_id=session_id),
         )
 
     def state(self, session_id: str) -> dict[str, Any]:
@@ -64,23 +107,28 @@ def assemble_agent(
     domain_tools: DomainTools | None = None,
     middleware: Sequence[AgentMiddleware] = (),
     state_schema: type[DeepAgentState] | None = None,
+    judge: Judge | None = None,
+    judge_timeout_seconds: float = 5.0,
 ) -> SessionAgent:
     """Expose only three domain tools, with no filesystem, task, or summarization hooks."""
     domain = domain_tools if domain_tools is not None else build_tools()
+    security = [TrustMiddleware(judge or FakeJudge(), judge_timeout_seconds)]
     graph = create_deep_agent(
         model=model,
-        tools=domain.tools,
+        tools=[_guard_raw_tool(entry) for entry in domain.tools],
         middleware=[
             DisabledBuiltin("FilesystemMiddleware"),
             DisabledBuiltin("SubAgentMiddleware"),
             DisabledBuiltin("SummarizationMiddleware"),
             *middleware,
+            *security,
         ],
-        state_schema=state_schema,
+        state_schema=state_schema or SecurityState,
+        context_schema=SecurityContext,
         checkpointer=InMemorySaver(),
         system_prompt="Use only the supplied tools. Request one tool call at a time.",
     )
-    return SessionAgent(graph, domain)
+    return SessionAgent(graph, domain, guarded=True)
 
 
 async def _harness() -> None:

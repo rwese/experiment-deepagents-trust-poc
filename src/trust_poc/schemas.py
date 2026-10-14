@@ -4,7 +4,7 @@ import operator
 from typing import Annotated, Literal, Self
 
 from deepagents.graph import DeepAgentState
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Category = Literal["pii", "credential", "financial", "medical", "inspection_failed"]
 Capability = Literal["local_read", "external_write"]
@@ -95,11 +95,17 @@ class SecurityEvent(FrozenContract):
     phase: Literal["request", "response", "batch"]
     policy_outcome: Literal["allow", "deny", "withhold", "not_run"]
     judge_outcome: Literal["allow", "deny", "withhold", "failed", "not_run"]
-    reason_codes: tuple[str, ...]
-    categories: tuple[Category, ...]
+    reason_codes: list[str]
+    categories: list[Category]
     trusted_before: bool
     trusted_after: bool
     enforcement: Literal["executed", "denied", "released", "withheld", "batch_rejected"]
+
+    @field_validator("reason_codes", "categories", mode="before")
+    @classmethod
+    def checkpoint_lists(cls, value):
+        """Audit collections use the same list shape before and after checkpoints."""
+        return list(value) if isinstance(value, tuple) else value
 
 
 class SecurityState(DeepAgentState):
