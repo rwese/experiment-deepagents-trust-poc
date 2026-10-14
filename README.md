@@ -26,3 +26,16 @@ LangGraph's tool node wraps them as JSON-string `ToolMessage` results with the o
 This first milestone establishes the executable harness. Enforcement, classification, and the
 blocked-send demonstration are added in later milestones; the harness command currently proves
 public reading and the restricted tool set. Live model evaluation remains separate from offline tests.
+
+Deterministic inspection accepts text and JSON and bounds the complete serialized response to
+16 KiB of UTF-8 with a maximum JSON depth of 32. It scans every nested string and JSON key,
+including decoded JSON in tool message text. Unsupported objects, cycles, non-finite numbers,
+and oversized responses fail closed with `inspection_failed`.
+
+Email and phone patterns can flag public contact information or long numeric strings as PII.
+Only documented `SYNTHETIC_API_KEY_`, `SYNTHETIC_PASSWORD_`, `SYNTHETIC_TOKEN_` formats and
+private-key headers are credential patterns; arbitrary secrets and obfuscated values can be missed.
+Locally configured fixture IDs identify PII, credential, financial and medical sources; returned
+labels cannot change that authority. The ambiguous fixture deliberately relies on the judge.
+Semantic medical/financial facts, indirect identity, encoded data and general prompt injection
+are outside deterministic pattern guarantees. Model judgments remain heuristic.
